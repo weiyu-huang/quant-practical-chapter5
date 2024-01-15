@@ -18,41 +18,41 @@ class FeatureExtractor:
             if column not in df_.columns:
                 raise ValueError(f"DataFrame must include {column} columns")
 
-    def accumulation_distribution_line(self, window=14):
+    def accumulation_distribution_line(self, period=14):
         close_minus_low = self.df['close'] - self.df['low']
         high_minus_close = self.df['high'] - self.df['close']
         high_minus_low = self.df['high'] - self.df['low']
         money_flow = (close_minus_low - high_minus_close) / high_minus_low
         money_flow[high_minus_low < 0.01] = 0
         self.df['money_flow_volume'] = money_flow * (self.df['volume'] / self.DF_VOLUME_DIVISOR)
-        ADL = self.df['money_flow_volume'].rolling(window=window).sum()
+        ADL = self.df['money_flow_volume'].rolling(period).sum()
         return ADL
 
-    def aroon(self, window=25):
-        aroon_high = self.df['high'].rolling(window+1).apply(lambda x: x.argmax()) / window * 100
-        aroon_low = self.df['low'].rolling(window+1).apply(lambda x: x.argmin()) / window * 100
+    def aroon(self, period=25):
+        aroon_high = self.df['high'].rolling(period+1).apply(lambda x: x.argmax()) / period * 100
+        aroon_low = self.df['low'].rolling(period+1).apply(lambda x: x.argmin()) / period * 100
         aroon_oscillator = aroon_high - aroon_low
         return aroon_high, aroon_low, aroon_oscillator
 
-    def average_true_range(self, window=14):
+    def average_true_range(self, period=14):
         df_temp = pd.DataFrame({
             't1': self.df['high'] - self.df['low'],
             't2': np.abs(self.df['high'] - self.df['close'].shift(1)),
             't3': np.abs(self.df['low'] - self.df['close'].shift(1))
         })
         self.df['true_range'] = df_temp.max(axis=1)
-        return self.df['true_range'].ewm(alpha=1/window, adjust=False).mean()
+        return self.df['true_range'].ewm(alpha=1/period, adjust=False).mean()
 
-    def average_true_range_percentage(self, window=14):
+    def average_true_range_percentage(self, period=14):
         if 'true_range' not in self.df.columns:
-            self.average_true_range(window=window)
+            self.average_true_range(period=period)
         tr_percentage = self.df['true_range'] / self.df['close'] * 100
-        return tr_percentage.ewm(alpha=1/window, adjust=False).mean()
+        return tr_percentage.ewm(alpha=1/period, adjust=False).mean()
 
-    def average_directional_index(self, window=14):
+    def average_directional_index(self, period=14):
         if 'true_range' not in self.df.columns:
-            self.average_true_range(window=window)
-        alpha = 1 / window
+            self.average_true_range(period=period)
+        alpha = 1 / period
 
         df_temp = pd.DataFrame({
             '+DM': self.df['high'] - self.df['high'].shift(1),
@@ -70,60 +70,66 @@ class FeatureExtractor:
 
         return df_temp['+DI'], df_temp['-DI'], df_temp['ADX']
 
-    def balance_of_power(self, window=14):
+    def balance_of_power(self, period=14):
         bop = (self.df['close'] - self.df['open']) / (self.df['high'] - self.df['low'])
-        return bop.rolling(window=window).mean()
+        return bop.rolling(period).mean()
 
-    def bollinger_band(self, window=20):
-        self.df['bollinger_middle'] = self.df['close'].rolling(window=window).mean()
-        std = self.df['close'].rolling(window=window).std()
+    def bollinger_band(self, period=20):
+        self.df['bollinger_middle'] = self.df['close'].rolling(period).mean()
+        std = self.df['close'].rolling(period).std()
         self.df['bollinger_upper'] = self.df['bollinger_middle'] + 2.0 * std
         self.df['bollinger_lower'] = self.df['bollinger_middle'] - 2.0 * std
         return self.df['bollinger_upper'], self.df['bollinger_middle'], self.df['bollinger_lower']
 
-    def bollinger_bandwidth(self, window=20):
+    def bollinger_bandwidth(self, period=20):
         if 'bollinger_middle' not in self.df.columns:
-            self.bollinger_band(window=window)
+            self.bollinger_band(period=period)
         return (self.df['bollinger_upper'] - self.df['bollinger_lower']) / self.df['bollinger_middle'] * 100
 
-    def bollinger_percentage(self, window=20):
+    def bollinger_percentage(self, period=20):
         if 'bollinger_middle' not in self.df.columns:
-            self.bollinger_band(window=window)
+            self.bollinger_band(period=period)
         bandwidth = self.df['bollinger_upper'] - self.df['bollinger_lower']
         return (self.df['close'] - self.df['bollinger_lower']) / bandwidth
 
-    def chainkin_money_flow(self, window=20):
+    def chainkin_money_flow(self, period=20):
         if 'money_flow_volume' not in self.df.columns:
             self.accumulation_distribution_line()
-        volume_sum = self.df['volume'].rolling(window=window).sum() / self.DF_VOLUME_DIVISOR
-        return self.df['money_flow_volume'].rolling(window=window).sum() - volume_sum
+        volume_sum = self.df['volume'].rolling(period).sum() / self.DF_VOLUME_DIVISOR
+        return self.df['money_flow_volume'].rolling(period).sum() - volume_sum
 
-    def chainkin_oscillator(self, windows=(20, 3, 10)):
+    def chainkin_oscillator(self, periods=(20, 3, 10)):
         if 'money_flow_volume' not in self.df.columns:
             self.accumulation_distribution_line()
-        adl = self.df['money_flow_volume'].rolling(window=windows[0]).sum()
-        return adl.ewm(span=windows[1], adjust=False).mean() - adl.ewm(span=windows[2], adjust=False).mean()
+        adl = self.df['money_flow_volume'].rolling(periods[0]).sum()
+        return adl.ewm(span=periods[1], adjust=False).mean() - adl.ewm(span=periods[2], adjust=False).mean()
 
-    def force_index(self, window=14):
+    def change_percentage(self, col='close', lookback=1):
+        return (self.df[col] - self.df[col].shift(lookback)) / self.df[col].shift(lookback) * 100
+
+    def change_direction(self, col='close', lookback=1):
+        return np.where(self.df[col] > self.df[col].shift(lookback), 1.0, 0.0)
+
+    def force_index(self, period=14):
         fi = (self.df['close'] - self.df['close'].shift(1)) * (self.df['volume'] / self.DF_VOLUME_DIVISOR)
-        return fi.ewm(span=window, adjust=False).mean()
+        return fi.ewm(span=period, adjust=False).mean()
 
-    def macd(self, windows=(12, 26, 9)):
+    def macd(self, periods=(12, 26, 9)):
         macd_line = (
-            self.df['close'].ewm(span=windows[0], adjust=False).mean() -
-            self.df['close'].ewm(span=windows[1],adjust=False).mean()
+            self.df['close'].ewm(span=periods[0], adjust=False).mean() -
+            self.df['close'].ewm(span=periods[1], adjust=False).mean()
         )
 
-        signal_line = macd_line.ewm(span=windows[2], adjust=False).mean()
+        signal_line = macd_line.ewm(span=periods[2], adjust=False).mean()
         macd_histogram = macd_line - signal_line
         return macd_line, signal_line, macd_histogram
 
-    def stochastic_oscillator(self, window=14):
-        lowest_low = self.df['low'].rolling(window=window).min()
-        highest_high = self.df['high'].rolling(window=window).max()
+    def stochastic_oscillator(self, period=14):
+        lowest_low = self.df['low'].rolling(period).min()
+        highest_high = self.df['high'].rolling(period).max()
 
         k_percent = (self.df['close'] - lowest_low) / (highest_high - lowest_low) * 100
-        d_percent = k_percent.rolling(window=3).mean()
+        d_percent = k_percent.rolling(3).mean()
         return k_percent, d_percent
 
 
@@ -134,7 +140,7 @@ if __name__ == "__main__":
     print(df.shape)
 
     feature_extractor = FeatureExtractor(df)
-    t1 = feature_extractor.chainkin_oscillator()
+    t1 = feature_extractor.change_percentage()
 
     ax = df['close'].plot(color='g')
     t1.plot(secondary_y=True, ax=ax, color='b')
