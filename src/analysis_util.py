@@ -13,10 +13,15 @@ class StockDirectionAnalyzer:
 
     def compute_success_rates(self):
         tn, fp, fn, tp = confusion_matrix(self.y_true, self.y_pred).ravel()
-        up_predictive_value = tp / (fp + tp) * 100 # precision
+        up_predictive_value = tp / (fp + tp) * 100  # precision
         down_predicitive_value = tn / (tn + fn) * 100
-        print(f"Up correct: {up_predictive_value:.2f}%; Down correct: {down_predicitive_value:.2f}%")
-        return up_predictive_value, down_predicitive_value
+        accuracy = (tp + tn) / (tp + tn + fp + fn) * 100
+        print(f"""
+        Up correct: {up_predictive_value:.2f}%;
+        Down correct: {down_predicitive_value:.2f}%;
+        Accuracy: {accuracy:.2f}%;
+        """)
+        return up_predictive_value, down_predicitive_value, accuracy
 
     def plot_decisions(self):
         if self.price_ is None:
@@ -28,10 +33,11 @@ class StockDirectionAnalyzer:
         plt.ylabel('Price')
         plt.show()
 
-
-    def analyze(self):
-        self.compute_success_rates()
-        self.plot_decisions()
+    def analyze(self, plot=True):
+        up_predictive_value, down_predicitive_value, accuracy = self.compute_success_rates()
+        if plot:
+            self.plot_decisions()
+        return up_predictive_value, down_predicitive_value, accuracy
 
 
 if __name__ == '__main__':

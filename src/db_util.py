@@ -26,7 +26,7 @@ class DataBase:
         conn_.commit()
 
     def get_data(self, ticker, interval='1d', period='1y'):
-        table_name = ticker if ticker[0] != '^' else ticker[1:]
+        table_name = ticker.replace('^', '').replace('-', '')
 
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
